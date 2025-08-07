@@ -65,11 +65,17 @@ export function RegistrationList({ registrations, onEdit, onDuplicate, onDelete 
     });
   };
 
-  const getPaymentOptionsText = (paymentOptions: Registration['paymentOptions']) => {
+  const getPaymentOptionsText = (paymentOptions: Registration['paymentOptions'], savedPlans: Registration['savedPlans']) => {
     const options = [];
     if (paymentOptions.fullPayment) options.push('Full Payment');
-    if (paymentOptions.fourInstallments) options.push('4 Installments');
-    if (paymentOptions.depositInstallments) options.push('4 Installments (with deposit)');
+    if (paymentOptions.fourInstallments) {
+      const plan = savedPlans.fourInstallments;
+      options.push(plan?.title || '4 Installments');
+    }
+    if (paymentOptions.depositInstallments) {
+      const plan = savedPlans.depositInstallments;
+      options.push(plan?.title || '4 Installments (with deposit)');
+    }
     
     if (options.length === 0) return 'No payment options';
     return options.join(', ');
@@ -133,7 +139,7 @@ export function RegistrationList({ registrations, onEdit, onDuplicate, onDelete 
                   </div>
                   
                   <div className="text-xs text-gray-600">
-                    <span className="font-medium">Payment:</span> {getPaymentOptionsText(registration.paymentOptions)}
+                    <span className="font-medium">Payment:</span> {getPaymentOptionsText(registration.paymentOptions, registration.savedPlans)}
                   </div>
                 </div>
                 

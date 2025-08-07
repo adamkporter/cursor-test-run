@@ -347,24 +347,66 @@ export default function Home() {
   };
 
   const handlePaymentChange = (id: number, field: string, value: string | number | boolean) => {
-    setPaymentPlan(prev => ({
-      ...prev,
-      payments: prev.payments.map(payment => {
-        if (payment.id === id) {
-          // If this payment is being marked as a deposit, unmark all others and set due date
-          if (field === 'isDeposit' && value === true) {
-            return { ...payment, [field]: value, dueDate: 'Due at checkout' };
+    setPaymentPlan(prev => {
+      // If this is a deposit status change, we need to regenerate all payment dates
+      if (field === 'isDeposit') {
+        const updatedPayments = prev.payments.map(payment => {
+          if (payment.id === id) {
+            // If this payment is being marked as a deposit
+            if (value === true) {
+              return { ...payment, isDeposit: true, dueDate: 'Due at checkout' };
+            }
+            // If this payment is being unmarked as a deposit
+            else {
+              // We'll regenerate the date below
+              return { ...payment, isDeposit: false, dueDate: '' };
+            }
+          } else {
+            // If another payment is being marked as deposit, unmark this one
+            if (value === true) {
+              return { ...payment, isDeposit: false };
+            }
+            return payment;
           }
-          return { ...payment, [field]: value };
-        } else {
-          // If another payment is being marked as deposit, unmark this one
-          if (field === 'isDeposit' && value === true) {
-            return { ...payment, isDeposit: false };
+        });
+
+        // Now regenerate all payment dates based on the new deposit configuration
+        if (formData.startDate && dateValidation.startDateValid) {
+          const startDate = new Date(formData.startDate);
+          let dateIndex = 0;
+          
+          updatedPayments.forEach((payment, index) => {
+            if (!payment.isDeposit) {
+              // Generate date for non-deposit payments
+              const paymentMonth = startDate.getMonth() + 2 + dateIndex; // Start 2 months after event
+              const paymentDate = new Date(startDate.getFullYear(), paymentMonth, 1);
+              payment.dueDate = paymentDate.toLocaleDateString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                year: 'numeric'
+              });
+              dateIndex++;
+            }
+          });
+        }
+
+        return {
+          ...prev,
+          payments: updatedPayments
+        };
+      }
+
+      // For non-deposit field changes, use the original logic
+      return {
+        ...prev,
+        payments: prev.payments.map(payment => {
+          if (payment.id === id) {
+            return { ...payment, [field]: value };
           }
           return payment;
-        }
-      })
-    }));
+        })
+      };
+    });
   };
 
   const handlePercentageChange = (id: number, newPercentage: number) => {
@@ -469,82 +511,120 @@ export default function Home() {
       let nextDueDate = '';
       if (lastPaymentWithDate && lastPaymentWithDate.dueDate !== 'Due at checkout') {
         const lastDate = new Date(lastPaymentWithDate.dueDate);
-        const nextDate = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 1);
-        nextDueDate = nextDate.toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: 'numeric', 
-          year: 'numeric' 
+        nextDueDate = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 1).toLocaleDateString('en-US', {
+          month: '2-digit',
+          day: '2-digit',
+          year: 'numeric'
         });
-      } else {
+      } else if (formData.startDate && dateValidation.startDateValid) {
         // If no existing payments with dates, generate from start date
-        const dates = generatePaymentDates(formData.startDate || '', 1);
-        nextDueDate = dates[0] || '';
+        const startDate = new Date(formData.startDate);
+        nextDueDate = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1).toLocaleDateString('en-US', {
+          month: '2-digit',
+          day: '2-digit',
+          year: 'numeric'
+        });
       }
       
-      // Calculate deposit percentage
-      const depositPayments = prev.payments.filter(p => p.isDeposit);
-      const depositPercentage = depositPayments.reduce((sum, p) => sum + p.percentage, 0);
-      
-      // Calculate remaining percentage for non-deposit payments
-      const remainingPercentage = 100 - depositPercentage;
-      
-      // Count non-deposit payments (including the new one)
-      const nonDepositCount = prev.payments.filter(p => !p.isDeposit).length + 1;
-      
-      // Distribute remaining percentage equally among non-deposit payments
-      const distributedShares = distributePercentagesEqually(remainingPercentage, nonDepositCount);
-      
-      const newPayment = { 
-        id: newId, 
-        title: `Payment ${newId}`, 
-        dueDate: nextDueDate, 
-        percentage: distributedShares[distributedShares.length - 1], // Last share goes to new payment
-        isDeposit: false // Only first payment can be deposit
+      const newPayment = {
+        id: newId,
+        title: `Payment ${newId}`,
+        dueDate: nextDueDate,
+        percentage: 0,
+        isDeposit: false
       };
       
-      // Update all non-deposit payments to have equal percentages
-      const nonDepositPayments = prev.payments.filter(p => !p.isDeposit);
-      const updatedPayments = prev.payments.map(payment => {
-        if (!payment.isDeposit) {
-          const paymentIndex = nonDepositPayments.findIndex(p => p.id === payment.id);
-          return { ...payment, percentage: distributedShares[paymentIndex] };
+      // Separate edited and unedited payments
+      const editedPayments = prev.payments.filter(p => editedPercentages.has(p.id));
+      const uneditedPayments = prev.payments.filter(p => !editedPercentages.has(p.id));
+      
+      // Calculate total percentage of unedited payments
+      const uneditedTotal = uneditedPayments.reduce((sum, p) => sum + p.percentage, 0);
+      
+      // Distribute unedited total + new payment among unedited payments + new payment
+      const totalToDistribute = uneditedTotal;
+      const paymentsToDistribute = [...uneditedPayments, newPayment];
+      const distributedShares = distributePercentagesEqually(totalToDistribute, paymentsToDistribute.length);
+      
+      // Create new payments array with updated percentages
+      const updatedPayments = [
+        ...editedPayments, // Keep edited payments unchanged
+        ...uneditedPayments.map((payment, index) => ({
+          ...payment,
+          percentage: distributedShares[index]
+        })),
+        {
+          ...newPayment,
+          percentage: distributedShares[distributedShares.length - 1]
         }
-        return payment;
-      });
+      ];
       
       return {
         ...prev,
-        payments: [...updatedPayments, newPayment]
+        payments: updatedPayments
       };
     });
   };
 
   const removePayment = (id: number) => {
-    setPaymentPlan(prev => ({
-      ...prev,
-      payments: prev.payments.filter(payment => payment.id !== id)
-    }));
+    setPaymentPlan(prev => {
+      const paymentToRemove = prev.payments.find(p => p.id === id);
+      const remainingPayments = prev.payments.filter(payment => payment.id !== id);
+      
+      if (remainingPayments.length === 0) {
+        return prev; // Don't remove the last payment
+      }
+      
+      // Separate edited and unedited remaining payments
+      const editedPayments = remainingPayments.filter(p => editedPercentages.has(p.id));
+      const uneditedPayments = remainingPayments.filter(p => !editedPercentages.has(p.id));
+      
+      let updatedPayments = [...editedPayments]; // Keep edited payments unchanged
+      
+      if (uneditedPayments.length > 0) {
+        // If the removed payment was edited, add its percentage to unedited payments
+        const removedPercentage = paymentToRemove?.percentage || 0;
+        const uneditedTotal = uneditedPayments.reduce((sum, p) => sum + p.percentage, 0);
+        const totalToDistribute = uneditedTotal + removedPercentage;
+        
+        // Distribute among unedited payments
+        const distributedShares = distributePercentagesEqually(totalToDistribute, uneditedPayments.length);
+        
+        updatedPayments = [
+          ...editedPayments,
+          ...uneditedPayments.map((payment, index) => ({
+            ...payment,
+            percentage: distributedShares[index]
+          }))
+        ];
+      } else {
+        // All remaining payments are edited, just remove the payment
+        updatedPayments = remainingPayments;
+      }
+      
+      return {
+        ...prev,
+        payments: updatedPayments
+      };
+    });
   };
 
   const distributePercentagesEqually = (totalPercentage: number, count: number) => {
     if (count === 0) return [];
     
-    // Calculate base equal share
-    const baseShare = totalPercentage / count;
-    const roundedShare = Math.floor(baseShare * 100) / 100; // Round down to 2 decimal places
-    
-    // Calculate how much we're short
-    const totalRounded = roundedShare * count;
-    const remainder = totalPercentage - totalRounded;
+    // Use integer arithmetic to avoid floating-point precision issues
+    const totalCents = Math.round(totalPercentage * 100);
+    const baseCents = Math.floor(totalCents / count);
+    const remainderCents = totalCents - (baseCents * count);
     
     // Distribute the shares, adding the remainder to the last payment
     const shares = [];
     for (let i = 0; i < count; i++) {
       if (i === count - 1) {
         // Last payment gets the remainder to ensure exact total
-        shares.push(roundedShare + remainder);
+        shares.push((baseCents + remainderCents) / 100);
       } else {
-        shares.push(roundedShare);
+        shares.push(baseCents / 100);
       }
     }
     
@@ -1078,63 +1158,70 @@ export default function Home() {
                           </div>
                           
                           {/* Payment Table */}
-                          <div className="border border-gray-200 rounded-lg overflow-hidden">
-                            <div className="bg-gray-50 px-4 py-3 grid grid-cols-5 gap-4 text-sm font-medium text-gray-700">
-                              <div>Title</div>
-                              <div>Due Date</div>
-                              <div>Percentage</div>
-                              <div>Amount</div>
-                              <div></div>
+                          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
+                            <div className="bg-gray-50 px-3 py-2 grid grid-cols-12 gap-2 text-xs font-medium text-gray-700 sticky top-0">
+                              <div className="col-span-3">Title</div>
+                              <div className="col-span-3">Due Date</div>
+                              <div className="col-span-2">%</div>
+                              <div className="col-span-2">Amount</div>
+                              <div className="col-span-1">Deposit</div>
+                              <div className="col-span-1"></div>
                             </div>
                             
                             {paymentPlan.payments.map((payment, index) => (
-                              <div key={payment.id} className="px-4 py-3 grid grid-cols-5 gap-4 items-center border-t border-gray-200">
-                                <Input
-                                  value={payment.title}
-                                  onChange={(e) => handlePaymentChange(payment.id, 'title', e.target.value)}
-                                  className="text-sm"
-                                  placeholder="Payment name"
-                                />
-                                <div className="text-sm text-gray-500 bg-gray-50 px-3 py-2 rounded border border-gray-200">
-                                  {payment.dueDate || 'mm/dd/yyyy'}
+                              <div key={payment.id} className="px-3 py-2 grid grid-cols-12 gap-2 items-center border-t border-gray-200 min-h-[48px]">
+                                <div className="col-span-3">
+                                  <Input
+                                    value={payment.title}
+                                    onChange={(e) => handlePaymentChange(payment.id, 'title', e.target.value)}
+                                    className="text-xs h-8"
+                                    placeholder="Payment name"
+                                  />
                                 </div>
-                                                                 <div className="relative">
-                                   <Input
-                                     type="text"
-                                     value={payment.percentage}
-                                     onChange={(e) => {
-                                       const value = e.target.value;
-                                       // Allow typing numbers and decimals
-                                       if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                                         const numValue = parseFloat(value) || 0;
-                                         handlePercentageChange(payment.id, numValue);
-                                       }
-                                     }}
-                                     className={`text-sm pr-8 ${editedPercentages.has(payment.id) ? 'text-gray-900' : 'text-gray-500'}`}
-                                     placeholder="0"
-                                   />
-                                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">%</span>
-                                 </div>
-                                <div className="text-sm text-gray-600">
+                                <div className="col-span-3">
+                                  <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1.5 rounded border border-gray-200 h-8 flex items-center">
+                                    {payment.dueDate || 'mm/dd/yyyy'}
+                                  </div>
+                                </div>
+                                <div className="col-span-2 relative">
+                                  <Input
+                                    type="text"
+                                    value={payment.percentage}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      // Allow typing numbers and decimals
+                                      if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                        const numValue = parseFloat(value) || 0;
+                                        handlePercentageChange(payment.id, numValue);
+                                      }
+                                    }}
+                                    className={`text-xs pr-6 h-8 ${editedPercentages.has(payment.id) ? 'text-gray-900' : 'text-gray-500'}`}
+                                    placeholder="0"
+                                  />
+                                  <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 text-xs">%</span>
+                                </div>
+                                <div className="col-span-2 text-xs text-gray-600 h-8 flex items-center">
                                   ${formData.price ? ((parseFloat(formData.price) * payment.percentage / 100).toFixed(2)) : '0.00'}
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="col-span-1 flex items-center justify-center">
                                   {index === 0 && (
-                                    <div className="flex items-center gap-2 bg-blue-50 px-2 py-1 rounded">
-                                      <Checkbox
-                                        checked={payment.isDeposit}
-                                        onCheckedChange={(checked) => handlePaymentChange(payment.id, 'isDeposit', checked)}
-                                      />
-                                      <span className="text-xs text-blue-700 font-medium">Deposit</span>
-                                    </div>
+                                    <Checkbox
+                                      checked={payment.isDeposit === true}
+                                      onCheckedChange={(checked) => {
+                                        handlePaymentChange(payment.id, 'isDeposit', checked === true);
+                                      }}
+                                      className="w-4 h-4"
+                                    />
                                   )}
+                                </div>
+                                <div className="col-span-1 flex items-center justify-center">
                                   {paymentPlan.payments.length > 1 && (
                                     <button
                                       onClick={() => removePayment(payment.id)}
-                                      className="text-red-500 hover:text-red-700 ml-auto p-1 rounded hover:bg-red-50"
+                                      className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
                                       title="Remove payment"
                                     >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                       </svg>
                                     </button>
