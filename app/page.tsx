@@ -1,6 +1,14 @@
 export default function Home() {
   return (
-    <div>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '100vh',
+      textAlign: 'center',
+      padding: '20px'
+    }}>
       <h1>Adam Porter</h1>
       <h2>Software Engineer</h2>
       <p>I&apos;m a software engineer with a passion for building products that help people live better lives.</p>
