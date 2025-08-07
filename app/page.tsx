@@ -1,25 +1,28 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+
 export default function Home() {
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      textAlign: 'center',
-      padding: '20px'
-    }}>
-      <h1 style={{
-        fontSize: '48px',
-        fontWeight: 'bold',
-        color: 'white',
-      }}>Adam Porter</h1>
-      <h2 style={{
-        fontSize: '24px',
-        color: 'white',
-      }}>Software Engineer</h2>
-      <p>I&apos;m a software engineer with a passion for building products that help people live better lives.</p>
-      <p>I&apos;m currently working at <a href="https://www.google.com">Google</a> as a software engineer.</p>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-3xl font-bold">Adam Porter</CardTitle>
+          <CardDescription className="text-xl">Software Engineer</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            I&apos;m a software engineer with a passion for building products that help people live better lives.
+          </p>
+          <p className="text-muted-foreground">
+            I&apos;m currently working at <a href="https://www.google.com" className="text-primary hover:underline">Google</a> as a software engineer.
+          </p>
+          <div className="flex justify-center pt-4">
+            <Button variant="outline">
+              Get in Touch
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
