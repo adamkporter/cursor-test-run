@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { RegistrationList } from "@/components/RegistrationList";
 
 interface Payment {
   id: number;
@@ -21,6 +22,23 @@ interface Payment {
 interface PaymentPlan {
   title: string;
   payments: Payment[];
+}
+
+interface Registration {
+  id: string;
+  title: string;
+  price: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  isFree: boolean;
+  paymentOptions: {
+    fullPayment: boolean;
+    fourInstallments: boolean;
+    depositInstallments: boolean;
+  };
+  savedPlans: any;
+  createdAt: Date;
 }
 
 export default function Home() {
@@ -36,7 +54,10 @@ export default function Home() {
       { id: 4, title: 'Payment 4', dueDate: '', percentage: 25, isDeposit: false }
     ]
   });
+  const [editedPercentages, setEditedPercentages] = useState<Set<number>>(new Set());
   const [savedPlans, setSavedPlans] = useState<{[key: string]: PaymentPlan}>({});
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [editingRegistration, setEditingRegistration] = useState<Registration | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     price: '',
@@ -45,11 +66,15 @@ export default function Home() {
     endDate: '',
     isFree: false
   });
+  const [dateValidation, setDateValidation] = useState({
+    startDateValid: true,
+    startDateError: ''
+  });
 
   const [paymentOptions, setPaymentOptions] = useState({
-    fullPayment: false,
-    fourInstallments: true,
-    depositInstallments: true
+    fullPayment: true,
+    fourInstallments: false,
+    depositInstallments: false
   });
 
   const [expandedOptions, setExpandedOptions] = useState({
@@ -58,8 +83,143 @@ export default function Home() {
     depositInstallments: false
   });
 
+  const validateStartDate = (dateString: string) => {
+    if (!dateString) {
+      return { isValid: true, error: '' };
+    }
+    
+    const selectedDate = new Date(dateString);
+    const today = new Date();
+    
+    // Reset time to start of day for comparison
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    if (selectedDate < today) {
+      return { isValid: false, error: 'Start date must be today or in the future' };
+    }
+    
+    return { isValid: true, error: '' };
+  };
+
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // If start date changes, validate and update all payment plan dates
+    if (field === 'startDate') {
+      const validation = validateStartDate(value as string);
+      setDateValidation({
+        startDateValid: validation.isValid,
+        startDateError: validation.error
+      });
+      
+      // Update payment plans based on validation
+      if (validation.isValid) {
+        // Update current payment plan if editing
+        if (isEditingPaymentPlan && paymentPlan.payments.length > 0) {
+          const dates = generatePaymentDates(value as string || '', paymentPlan.payments.length);
+          setPaymentPlan(prev => ({
+            ...prev,
+            payments: prev.payments.map((payment, index) => {
+              if (payment.isDeposit) {
+                return { ...payment, dueDate: 'Due at checkout' };
+              } else {
+                const dateIndex = index - (prev.payments.filter(p => p.isDeposit).length);
+                return { ...payment, dueDate: dates[dateIndex] || '' };
+              }
+            })
+          }));
+        }
+        
+        // Update saved plans with new dates
+        setSavedPlans(prev => {
+          const updatedPlans = { ...prev };
+          
+          // Update fourInstallments plan
+          if (updatedPlans.fourInstallments) {
+            const dates = generatePaymentDates(value as string || '', updatedPlans.fourInstallments.payments.length);
+            updatedPlans.fourInstallments = {
+              ...updatedPlans.fourInstallments,
+              payments: updatedPlans.fourInstallments.payments.map((payment, index) => {
+                if (payment.isDeposit) {
+                  return { ...payment, dueDate: 'Due at checkout' };
+                } else {
+                  const dateIndex = index - (updatedPlans.fourInstallments.payments.filter(p => p.isDeposit).length);
+                  return { ...payment, dueDate: dates[dateIndex] || '' };
+                }
+              })
+            };
+          }
+          
+          // Update depositInstallments plan
+          if (updatedPlans.depositInstallments) {
+            const dates = generatePaymentDates(value as string || '', updatedPlans.depositInstallments.payments.length);
+            updatedPlans.depositInstallments = {
+              ...updatedPlans.depositInstallments,
+              payments: updatedPlans.depositInstallments.payments.map((payment, index) => {
+                if (payment.isDeposit) {
+                  return { ...payment, dueDate: 'Due at checkout' };
+                } else {
+                  const dateIndex = index - (updatedPlans.depositInstallments.payments.filter(p => p.isDeposit).length);
+                  return { ...payment, dueDate: dates[dateIndex] || '' };
+                }
+              })
+            };
+          }
+          
+          return updatedPlans;
+        });
+      } else {
+        // Clear payment dates when start date is invalid
+        if (isEditingPaymentPlan && paymentPlan.payments.length > 0) {
+          setPaymentPlan(prev => ({
+            ...prev,
+            payments: prev.payments.map((payment) => {
+              if (payment.isDeposit) {
+                return { ...payment, dueDate: 'Due at checkout' };
+              } else {
+                return { ...payment, dueDate: '' };
+              }
+            })
+          }));
+        }
+        
+        // Clear saved plans dates when start date is invalid
+        setSavedPlans(prev => {
+          const updatedPlans = { ...prev };
+          
+          // Clear fourInstallments plan dates
+          if (updatedPlans.fourInstallments) {
+            updatedPlans.fourInstallments = {
+              ...updatedPlans.fourInstallments,
+              payments: updatedPlans.fourInstallments.payments.map((payment) => {
+                if (payment.isDeposit) {
+                  return { ...payment, dueDate: 'Due at checkout' };
+                } else {
+                  return { ...payment, dueDate: '' };
+                }
+              })
+            };
+          }
+          
+          // Clear depositInstallments plan dates
+          if (updatedPlans.depositInstallments) {
+            updatedPlans.depositInstallments = {
+              ...updatedPlans.depositInstallments,
+              payments: updatedPlans.depositInstallments.payments.map((payment) => {
+                if (payment.isDeposit) {
+                  return { ...payment, dueDate: 'Due at checkout' };
+                } else {
+                  return { ...payment, dueDate: '' };
+                }
+              })
+            };
+          }
+          
+          return updatedPlans;
+        });
+      }
+    }
   };
 
   const handlePriceChange = (value: string) => {
@@ -92,8 +252,6 @@ export default function Home() {
     }).format(numericValue);
   };
 
-
-
   const handleFreeCheckboxChange = (checked: boolean) => {
     setFormData(prev => ({ 
       ...prev, 
@@ -115,12 +273,22 @@ export default function Home() {
     return installment.toFixed(2);
   };
 
-  const generatePaymentDates = (startDate: string, count: number) => {
+  const generatePaymentDates = (registrationDate: string, count: number) => {
     const dates = [];
-    const start = new Date(startDate);
     
-    // For the first payment, use the 1st of the month following the start date
-    const firstPaymentDate = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    // Validate the registration date
+    const registration = new Date(registrationDate);
+    if (isNaN(registration.getTime()) || !registrationDate) {
+      // If invalid date, return empty dates
+      for (let i = 0; i < count; i++) {
+        dates.push('');
+      }
+      return dates;
+    }
+    
+    // For the first payment, use the 1st of the month following the month after registration
+    // Example: Register on March 15 -> First payment due May 1
+    const firstPaymentDate = new Date(registration.getFullYear(), registration.getMonth() + 2, 1);
     
     for (let i = 0; i < count; i++) {
       const date = new Date(firstPaymentDate);
@@ -137,6 +305,9 @@ export default function Home() {
 
   const openEditPlan = (planType: string) => {
     setEditingPlanType(planType);
+    
+    // Reset edited percentages when opening a new plan
+    setEditedPercentages(new Set());
     
     // Check if there's already a saved plan for this type
     const existingPlan = savedPlans[planType];
@@ -159,14 +330,13 @@ export default function Home() {
           { id: 4, title: 'Payment 4', dueDate: dates[3], percentage: 25, isDeposit: false }
         ];
       } else if (planType === 'depositInstallments') {
-        title = 'Deposit + 4 Installments';
+        title = '4 Installments';
         const dates = generatePaymentDates(formData.startDate, 4);
         payments = [
-          { id: 1, title: 'Deposit', dueDate: 'Due at checkout', percentage: 20, isDeposit: true },
-          { id: 2, title: 'Payment 1', dueDate: dates[0], percentage: 20, isDeposit: false },
-          { id: 3, title: 'Payment 2', dueDate: dates[1], percentage: 20, isDeposit: false },
-          { id: 4, title: 'Payment 3', dueDate: dates[2], percentage: 20, isDeposit: false },
-          { id: 5, title: 'Payment 4', dueDate: dates[3], percentage: 20, isDeposit: false }
+          { id: 1, title: 'Payment 1', dueDate: 'Due at checkout', percentage: 25, isDeposit: true },
+          { id: 2, title: 'Payment 2', dueDate: dates[0], percentage: 25, isDeposit: false },
+          { id: 3, title: 'Payment 3', dueDate: dates[1], percentage: 25, isDeposit: false },
+          { id: 4, title: 'Payment 4', dueDate: dates[2], percentage: 25, isDeposit: false }
         ];
       }
       
@@ -181,9 +351,9 @@ export default function Home() {
       ...prev,
       payments: prev.payments.map(payment => {
         if (payment.id === id) {
-          // If this payment is being marked as a deposit, unmark all others
+          // If this payment is being marked as a deposit, unmark all others and set due date
           if (field === 'isDeposit' && value === true) {
-            return { ...payment, [field]: value };
+            return { ...payment, [field]: value, dueDate: 'Due at checkout' };
           }
           return { ...payment, [field]: value };
         } else {
@@ -197,21 +367,156 @@ export default function Home() {
     }));
   };
 
+  const handlePercentageChange = (id: number, newPercentage: number) => {
+    // Mark this percentage as edited
+    setEditedPercentages(prev => new Set([...prev, id]));
+    
+    setPaymentPlan(prev => {
+      const currentPayment = prev.payments.find(p => p.id === id);
+      if (!currentPayment) return prev;
+
+      // Get other payments (excluding the one being changed)
+      const otherPayments = prev.payments.filter(p => p.id !== id);
+      
+      if (otherPayments.length === 0) {
+        // Only one payment, just update it
+        return {
+          ...prev,
+          payments: prev.payments.map(p => 
+            p.id === id ? { ...p, percentage: newPercentage } : p
+          )
+        };
+      }
+
+      // Calculate the remaining percentage to distribute
+      const remainingPercentage = 100 - newPercentage;
+      
+      if (remainingPercentage <= 0) {
+        // If the new percentage is 100% or more, set others to 0
+        return {
+          ...prev,
+          payments: prev.payments.map(p => 
+            p.id === id ? { ...p, percentage: newPercentage } : { ...p, percentage: 0 }
+          )
+        };
+      }
+
+      // Calculate how much of the remaining percentage is taken by edited payments
+      const editedPayments = otherPayments.filter(p => editedPercentages.has(p.id));
+      const editedTotal = editedPayments.reduce((sum, p) => sum + p.percentage, 0);
+      
+      // Calculate how much is left for placeholder payments
+      const placeholderRemaining = remainingPercentage - editedTotal;
+      
+      if (placeholderRemaining <= 0) {
+        // Not enough remaining for edited payments, don't change anything
+        return {
+          ...prev,
+          payments: prev.payments.map(p => 
+            p.id === id ? { ...p, percentage: newPercentage } : p
+          )
+        };
+      }
+
+      // Get placeholder payments (those not yet edited)
+      const placeholderPayments = otherPayments.filter(p => !editedPercentages.has(p.id));
+      
+      if (placeholderPayments.length === 0) {
+        // No placeholder payments, just update the current one
+        return {
+          ...prev,
+          payments: prev.payments.map(p => 
+            p.id === id ? { ...p, percentage: newPercentage } : p
+          )
+        };
+      }
+
+      // Distribute the remaining percentage equally among placeholder payments
+      const distributedShares = distributePercentagesEqually(placeholderRemaining, placeholderPayments.length);
+      
+      return {
+        ...prev,
+        payments: prev.payments.map(p => {
+          if (p.id === id) {
+            return { ...p, percentage: newPercentage };
+          } else if (placeholderPayments.some(pp => pp.id === p.id)) {
+            // This is a placeholder payment, redistribute it
+            const paymentIndex = placeholderPayments.findIndex(pp => pp.id === p.id);
+            return { ...p, percentage: distributedShares[paymentIndex] };
+          } else {
+            // This is an edited payment, keep its current value
+            return p;
+          }
+        })
+      };
+    });
+  };
+
   const addPayment = () => {
     const newId = Math.max(...paymentPlan.payments.map(p => p.id)) + 1;
-    const currentTotal = getTotalPercentage();
-    const remainingPercentage = 100 - currentTotal;
     
-    setPaymentPlan(prev => ({
-      ...prev,
-      payments: [...prev.payments, { 
+    setPaymentPlan(prev => {
+      // Find the last payment with a date to calculate the next month
+      const lastPaymentWithDate = prev.payments
+        .filter(p => p.dueDate && p.dueDate !== 'Due at checkout')
+        .sort((a, b) => {
+          if (a.dueDate === 'Due at checkout') return 1;
+          if (b.dueDate === 'Due at checkout') return -1;
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        })
+        .pop();
+      
+      let nextDueDate = '';
+      if (lastPaymentWithDate && lastPaymentWithDate.dueDate !== 'Due at checkout') {
+        const lastDate = new Date(lastPaymentWithDate.dueDate);
+        const nextDate = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 1);
+        nextDueDate = nextDate.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: 'numeric' 
+        });
+      } else {
+        // If no existing payments with dates, generate from start date
+        const dates = generatePaymentDates(formData.startDate || '', 1);
+        nextDueDate = dates[0] || '';
+      }
+      
+      // Calculate deposit percentage
+      const depositPayments = prev.payments.filter(p => p.isDeposit);
+      const depositPercentage = depositPayments.reduce((sum, p) => sum + p.percentage, 0);
+      
+      // Calculate remaining percentage for non-deposit payments
+      const remainingPercentage = 100 - depositPercentage;
+      
+      // Count non-deposit payments (including the new one)
+      const nonDepositCount = prev.payments.filter(p => !p.isDeposit).length + 1;
+      
+      // Distribute remaining percentage equally among non-deposit payments
+      const distributedShares = distributePercentagesEqually(remainingPercentage, nonDepositCount);
+      
+      const newPayment = { 
         id: newId, 
         title: `Payment ${newId}`, 
-        dueDate: '', 
-        percentage: remainingPercentage > 0 ? remainingPercentage : 0, 
+        dueDate: nextDueDate, 
+        percentage: distributedShares[distributedShares.length - 1], // Last share goes to new payment
         isDeposit: false // Only first payment can be deposit
-      }]
-    }));
+      };
+      
+      // Update all non-deposit payments to have equal percentages
+      const nonDepositPayments = prev.payments.filter(p => !p.isDeposit);
+      const updatedPayments = prev.payments.map(payment => {
+        if (!payment.isDeposit) {
+          const paymentIndex = nonDepositPayments.findIndex(p => p.id === payment.id);
+          return { ...payment, percentage: distributedShares[paymentIndex] };
+        }
+        return payment;
+      });
+      
+      return {
+        ...prev,
+        payments: [...updatedPayments, newPayment]
+      };
+    });
   };
 
   const removePayment = (id: number) => {
@@ -221,12 +526,54 @@ export default function Home() {
     }));
   };
 
+  const distributePercentagesEqually = (totalPercentage: number, count: number) => {
+    if (count === 0) return [];
+    
+    // Calculate base equal share
+    const baseShare = totalPercentage / count;
+    const roundedShare = Math.floor(baseShare * 100) / 100; // Round down to 2 decimal places
+    
+    // Calculate how much we're short
+    const totalRounded = roundedShare * count;
+    const remainder = totalPercentage - totalRounded;
+    
+    // Distribute the shares, adding the remainder to the last payment
+    const shares = [];
+    for (let i = 0; i < count; i++) {
+      if (i === count - 1) {
+        // Last payment gets the remainder to ensure exact total
+        shares.push(roundedShare + remainder);
+      } else {
+        shares.push(roundedShare);
+      }
+    }
+    
+    return shares;
+  };
+
   const getTotalPercentage = () => {
     return paymentPlan.payments.reduce((sum, payment) => sum + payment.percentage, 0);
   };
 
   const canSavePlan = () => {
     return getTotalPercentage() === 100;
+  };
+
+  const canSaveRegistration = () => {
+    // Check required fields
+    const hasTitle = formData.title.trim().length > 0;
+    const hasPrice = formData.isFree || (formData.price && parseFloat(formData.price) > 0);
+    const hasStartDate = formData.startDate && dateValidation.startDateValid;
+    
+    return hasTitle && hasPrice && hasStartDate;
+  };
+
+  const getMissingFields = () => {
+    const missing = [];
+    if (!formData.title.trim()) missing.push('Title');
+    if (!formData.isFree && (!formData.price || parseFloat(formData.price) <= 0)) missing.push('Price');
+    if (!formData.startDate || !dateValidation.startDateValid) missing.push('Start Date');
+    return missing;
   };
 
   const savePlan = () => {
@@ -245,7 +592,7 @@ export default function Home() {
     return savedPlan.payments.map((payment) => (
       <div key={payment.id} className="flex items-center justify-between text-sm">
         <span className="text-gray-600">
-          {payment.title} due {payment.dueDate}
+          {payment.title} due {payment.dueDate || 'mm/dd/yyyy'}
         </span>
         <span className="font-medium text-gray-900">
           ${formData.price ? ((parseFloat(formData.price) * payment.percentage / 100).toFixed(2)) : '0.00'}
@@ -256,7 +603,118 @@ export default function Home() {
 
   const getCustomPlanTitle = (planType: string) => {
     const savedPlan = savedPlans[planType];
-    return savedPlan?.title || (planType === 'fourInstallments' ? '4 Installments' : 'Deposit + 4 Installments');
+    return savedPlan?.title || (planType === 'fourInstallments' ? '4 Installments' : '4 Installments');
+  };
+
+  const createRegistration = () => {
+    const newRegistration: Registration = {
+      id: Date.now().toString(),
+      title: formData.title,
+      price: formData.price,
+      description: formData.description,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      isFree: formData.isFree,
+      paymentOptions: { ...paymentOptions },
+      savedPlans: { ...savedPlans },
+      createdAt: new Date()
+    };
+
+    setRegistrations(prev => [...prev, newRegistration]);
+    setIsOpen(false);
+    resetForm();
+  };
+
+  const editRegistration = (registration: Registration) => {
+    setEditingRegistration(registration);
+    setFormData({
+      title: registration.title,
+      price: registration.price,
+      description: registration.description,
+      startDate: registration.startDate,
+      endDate: registration.endDate,
+      isFree: registration.isFree
+    });
+    setPaymentOptions(registration.paymentOptions);
+    setSavedPlans(registration.savedPlans);
+    setIsOpen(true);
+  };
+
+  const updateRegistration = () => {
+    if (!editingRegistration) return;
+
+    const updatedRegistration: Registration = {
+      ...editingRegistration,
+      title: formData.title,
+      price: formData.price,
+      description: formData.description,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      isFree: formData.isFree,
+      paymentOptions: { ...paymentOptions },
+      savedPlans: { ...savedPlans }
+    };
+
+    setRegistrations(prev => 
+      prev.map(reg => reg.id === editingRegistration.id ? updatedRegistration : reg)
+    );
+    setIsOpen(false);
+    setEditingRegistration(null);
+    resetForm();
+  };
+
+  const duplicateRegistration = (registration: Registration) => {
+    const duplicatedRegistration: Registration = {
+      ...registration,
+      id: Date.now().toString(),
+      title: `${registration.title} (Copy)`,
+      createdAt: new Date()
+    };
+
+    setRegistrations(prev => [...prev, duplicatedRegistration]);
+  };
+
+  const deleteRegistration = (registrationId: string) => {
+    setRegistrations(prev => prev.filter(reg => reg.id !== registrationId));
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      price: '',
+      description: '',
+      startDate: '',
+      endDate: '',
+      isFree: false
+    });
+    setPaymentOptions({
+      fullPayment: true,
+      fourInstallments: false,
+      depositInstallments: false
+    });
+    setExpandedOptions({
+      fullPayment: false,
+      fourInstallments: false,
+      depositInstallments: false
+    });
+    setIsEditingPaymentPlan(false);
+    setEditingPlanType('');
+    setPaymentPlan({
+      title: '',
+      payments: [
+        { id: 1, title: 'Payment 1', dueDate: '', percentage: 25, isDeposit: false },
+        { id: 2, title: 'Payment 2', dueDate: '', percentage: 25, isDeposit: false },
+        { id: 3, title: 'Payment 3', dueDate: '', percentage: 25, isDeposit: false },
+        { id: 4, title: 'Payment 4', dueDate: '', percentage: 25, isDeposit: false }
+      ]
+    });
+    setEditedPercentages(new Set());
+    setSavedPlans({});
+    setDateValidation({
+      startDateValid: true,
+      startDateError: ''
+    });
+    setEditingRegistration(null);
   };
 
   return (
@@ -270,7 +728,13 @@ export default function Home() {
 
         {/* Add Registration Button */}
         <div className="mb-6">
-                      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <Sheet open={isOpen} onOpenChange={(open) => {
+            setIsOpen(open);
+            if (open) {
+              // Reset all form data when opening the sheet
+              resetForm();
+            }
+          }}>
             <SheetTrigger asChild>
               <Button className="bg-blue-600 hover:bg-blue-700">
                 Add Registration
@@ -288,7 +752,9 @@ export default function Home() {
               
               {/* Sticky Header */}
               <SheetHeader className="sticky top-0 z-10 bg-white border-b px-4 py-3">
-                <SheetTitle className="text-lg font-semibold">Add Registration</SheetTitle>
+                <SheetTitle className="text-lg font-semibold">
+                  {editingRegistration ? 'Edit Registration' : 'Add Registration'}
+                </SheetTitle>
               </SheetHeader>
               
               {/* Scrollable Content */}
@@ -389,15 +855,20 @@ export default function Home() {
                           {/* Start Date */}
                           <div className="space-y-1">
                             <Label htmlFor="startDate" className="text-sm font-semibold text-gray-700">
-                              Start Date
+                              Start Date <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               id="startDate"
                               type="date"
                               value={formData.startDate}
                               onChange={(e) => handleInputChange('startDate', e.target.value)}
-                              className="w-full"
+                              className={`w-full ${!dateValidation.startDateValid ? 'border-red-500' : ''}`}
                             />
+                            {!dateValidation.startDateValid && (
+                              <p className="text-sm text-red-600">
+                                {dateValidation.startDateError}
+                              </p>
+                            )}
                           </div>
 
                           {/* End Date */}
@@ -446,6 +917,7 @@ export default function Home() {
                                 checked={paymentOptions.fullPayment}
                                 onCheckedChange={(checked) => handlePaymentOptionChange('fullPayment', checked)}
                                 onClick={(e) => e.stopPropagation()}
+                                disabled={true}
                               />
                             </div>
                           </div>
@@ -454,14 +926,10 @@ export default function Home() {
                             <div className="px-4 pb-4 border-t border-gray-100">
                               <div className="pt-3 space-y-3">
                                 <div className="flex items-center justify-between text-sm">
-                                  <span className="text-gray-600">Payment 1 due {new Date(formData.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                  <span className="text-gray-600">Payment 1 due at checkout</span>
                                   <span className="font-medium text-gray-900">{formatPriceForDisplay(formData.price)}</span>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs text-gray-500">
-                                    Full payment is due on the registration start date.
-                                  </p>
-                                </div>
+
                               </div>
                             </div>
                           )}
@@ -492,9 +960,9 @@ export default function Home() {
                                 {savedPlans.fourInstallments ? (
                                   renderCustomPaymentPlan('fourInstallments')
                                 ) : (
-                                  generatePaymentDates(formData.startDate, 4).map((date, index) => (
+                                  (dateValidation.startDateValid ? generatePaymentDates(formData.startDate, 4) : ['', '', '', '']).map((date, index) => (
                                     <div key={index} className="flex items-center justify-between text-sm">
-                                      <span className="text-gray-600">Payment {index + 1} due {date}</span>
+                                      <span className="text-gray-600">Payment {index + 1} due {date || 'mm/dd/yyyy'}</span>
                                       <span className="font-medium text-gray-900">${calculateInstallments(parseFloat(formData.price), 4)}</span>
                                     </div>
                                   ))
@@ -517,14 +985,14 @@ export default function Home() {
                           )}
                         </div>
 
-                        {/* Deposit + 4 Installments Option */}
+                        {/* 4 Installments with Deposit Option */}
                         <div className="border border-gray-200 rounded-lg bg-white">
                           <div className="flex items-center justify-between py-3 px-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => toggleExpandedOption('depositInstallments')}>
                             <div className="flex items-center gap-3">
                               <svg className={`w-4 h-4 text-gray-400 transition-transform ${expandedOptions.depositInstallments ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                               </svg>
-                              <span className="text-sm font-semibold text-gray-900">{getCustomPlanTitle('depositInstallments')}</span>
+                              <span className="text-sm font-semibold text-gray-900">4 Installments (with deposit)</span>
                             </div>
                             <div className="flex items-center gap-4">
                               <span className="text-sm font-medium text-gray-700">{formatPriceForDisplay(formData.price)}</span>
@@ -547,9 +1015,9 @@ export default function Home() {
                                       <span className="text-gray-600">Deposit due at checkout</span>
                                       <span className="font-medium text-gray-900">${calculateInstallments(parseFloat(formData.price), 5)}</span>
                                     </div>
-                                    {generatePaymentDates(formData.startDate, 4).map((date, index) => (
+                                    {(dateValidation.startDateValid ? generatePaymentDates(formData.startDate, 4) : ['', '', '', '']).map((date, index) => (
                                       <div key={index} className="flex items-center justify-between text-sm">
-                                        <span className="text-gray-600">Payment {index + 1} due {date}</span>
+                                        <span className="text-gray-600">Payment {index + 1} due {date || 'mm/dd/yyyy'}</span>
                                         <span className="font-medium text-gray-900">${calculateInstallments(parseFloat(formData.price), 5)}</span>
                                       </div>
                                     ))}
@@ -582,7 +1050,7 @@ export default function Home() {
                           <div className="flex items-center gap-2">
                             <CardTitle className="text-lg font-semibold text-gray-900">Edit Payment Plan</CardTitle>
                             <span className="text-sm text-gray-600">
-                              {editingPlanType === 'fourInstallments' ? '4 Installments' : 'Deposit + 4 Installments'}
+                              {editingPlanType === 'fourInstallments' ? '4 Installments' : '4 Installments (with deposit)'}
                             </span>
                           </div>
                           <Button
@@ -613,8 +1081,7 @@ export default function Home() {
                           <p className="text-sm text-gray-600">These fees will be listed and collected during registration checkout.</p>
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                             <p className="text-sm text-blue-800">
-                              <strong>Tip:</strong> Edit payment names, dates, and percentages. Only the first payment can be marked as a deposit. 
-                              Total must equal 100% to save.
+                              <strong>Tip:</strong> Edit payment names, dates, and percentages. When you change a percentage, other payments will automatically adjust to maintain 100% total. Only the first payment can be marked as a deposit.
                             </p>
                           </div>
                           
@@ -636,29 +1103,26 @@ export default function Home() {
                                   className="text-sm"
                                   placeholder="Payment name"
                                 />
-                                <Input
-                                  type="date"
-                                  value={payment.dueDate}
-                                  onChange={(e) => handlePaymentChange(payment.id, 'dueDate', e.target.value)}
-                                  className="text-sm"
-                                />
-                                <div className="relative">
-                                  <Input
-                                    type="text"
-                                    value={payment.percentage}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      // Allow typing numbers and decimals
-                                      if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                                        const numValue = parseFloat(value) || 0;
-                                        handlePaymentChange(payment.id, 'percentage', numValue);
-                                      }
-                                    }}
-                                    className="text-sm pr-8"
-                                    placeholder="0"
-                                  />
-                                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">%</span>
+                                <div className="text-sm text-gray-500 bg-gray-50 px-3 py-2 rounded border border-gray-200">
+                                  {payment.dueDate || 'mm/dd/yyyy'}
                                 </div>
+                                                                 <div className="relative">
+                                   <Input
+                                     type="text"
+                                     value={payment.percentage}
+                                     onChange={(e) => {
+                                       const value = e.target.value;
+                                       // Allow typing numbers and decimals
+                                       if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                         const numValue = parseFloat(value) || 0;
+                                         handlePercentageChange(payment.id, numValue);
+                                       }
+                                     }}
+                                     className={`text-sm pr-8 ${editedPercentages.has(payment.id) ? 'text-gray-900' : 'text-gray-500'}`}
+                                     placeholder="0"
+                                   />
+                                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">%</span>
+                                 </div>
                                 <div className="text-sm text-gray-600">
                                   ${formData.price ? ((parseFloat(formData.price) * payment.percentage / 100).toFixed(2)) : '0.00'}
                                 </div>
@@ -727,8 +1191,10 @@ export default function Home() {
                                     // Reset to default plan
                                     const defaultPlan = editingPlanType === 'fourInstallments' 
                                       ? { title: '4 Installments', payments: generatePaymentDates(formData.startDate, 4).map((date, i) => ({ id: i + 1, title: `Payment ${i + 1}`, dueDate: date, percentage: 25, isDeposit: false })) }
-                                      : { title: 'Deposit + 4 Installments', payments: [{ id: 1, title: 'Deposit', dueDate: 'Due at checkout', percentage: 20, isDeposit: true }, ...generatePaymentDates(formData.startDate, 4).map((date, i) => ({ id: i + 2, title: `Payment ${i + 1}`, dueDate: date, percentage: 20, isDeposit: false }))] };
+                                      : { title: '4 Installments', payments: [{ id: 1, title: 'Payment 1', dueDate: 'Due at checkout', percentage: 25, isDeposit: true }, ...generatePaymentDates(formData.startDate, 3).map((date, i) => ({ id: i + 2, title: `Payment ${i + 2}`, dueDate: date, percentage: 25, isDeposit: false }))] };
                                     setPaymentPlan(defaultPlan);
+                                    // Reset edited percentages
+                                    setEditedPercentages(new Set());
                                   }}
                                 >
                                   Reset to Default
@@ -755,12 +1221,20 @@ export default function Home() {
                 <div className="flex justify-end gap-3">
                   <Button
                     variant="outline"
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => {
+                      setIsOpen(false);
+                      setEditingRegistration(null);
+                      resetForm();
+                    }}
                   >
                     Cancel
                   </Button>
-                  <Button className="bg-blue-600 hover:bg-blue-700">
-                    Create Registration
+                  <Button 
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    onClick={editingRegistration ? updateRegistration : createRegistration}
+                    disabled={!canSaveRegistration()}
+                  >
+                    {editingRegistration ? 'Update Registration' : 'Create Registration'}
                   </Button>
                 </div>
               </div>
@@ -769,22 +1243,12 @@ export default function Home() {
         </div>
 
         {/* Registrations List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Registrations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
-              <div className="text-gray-400 mb-4">
-                <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No registrations yet</h3>
-              <p className="text-gray-500 mb-4">Get started by creating your first registration</p>
-            </div>
-          </CardContent>
-        </Card>
+        <RegistrationList
+          registrations={registrations}
+          onEdit={editRegistration}
+          onDuplicate={duplicateRegistration}
+          onDelete={deleteRegistration}
+        />
       </div>
 
       
