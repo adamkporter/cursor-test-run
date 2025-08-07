@@ -37,7 +37,7 @@ interface Registration {
     fourInstallments: boolean;
     depositInstallments: boolean;
   };
-  savedPlans: any;
+  savedPlans: {[key: string]: PaymentPlan};
   createdAt: Date;
 }
 
@@ -566,14 +566,6 @@ export default function Home() {
     const hasStartDate = formData.startDate && dateValidation.startDateValid;
     
     return hasTitle && hasPrice && hasStartDate;
-  };
-
-  const getMissingFields = () => {
-    const missing = [];
-    if (!formData.title.trim()) missing.push('Title');
-    if (!formData.isFree && (!formData.price || parseFloat(formData.price) <= 0)) missing.push('Price');
-    if (!formData.startDate || !dateValidation.startDateValid) missing.push('Start Date');
-    return missing;
   };
 
   const savePlan = () => {

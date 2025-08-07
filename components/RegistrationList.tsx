@@ -2,6 +2,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+interface Payment {
+  id: number;
+  title: string;
+  dueDate: string;
+  percentage: number;
+  isDeposit: boolean;
+}
+
+interface PaymentPlan {
+  title: string;
+  payments: Payment[];
+}
+
 interface Registration {
   id: string;
   title: string;
@@ -15,7 +28,7 @@ interface Registration {
     fourInstallments: boolean;
     depositInstallments: boolean;
   };
-  savedPlans: any;
+  savedPlans: {[key: string]: PaymentPlan};
   createdAt: Date;
 }
 
