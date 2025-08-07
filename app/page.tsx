@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button"
 export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md p-4">
+        
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold">Adam Porter</CardTitle>
+          <CardTitle className="text-2xl font-bold">Adam Porter</CardTitle>
           <CardDescription className="text-xl">Software Engineer</CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
             I&apos;m a software engineer with a passion for building products that help people live better lives.
@@ -22,6 +24,7 @@ export default function Home() {
             </Button>
           </div>
         </CardContent>
+
       </Card>
     </div>
   )
