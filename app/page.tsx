@@ -92,14 +92,7 @@ export default function Home() {
     }).format(numericValue);
   };
 
-  const formatPriceForInput = (price: string) => {
-    if (!price || price === '0') return '';
-    
-    const numericValue = parseFloat(price);
-    if (isNaN(numericValue)) return '';
-    
-    return numericValue.toFixed(2);
-  };
+
 
   const handleFreeCheckboxChange = (checked: boolean) => {
     setFormData(prev => ({ 
@@ -127,7 +120,7 @@ export default function Home() {
     const start = new Date(startDate);
     
     // For the first payment, use the 1st of the month following the start date
-    let firstPaymentDate = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    const firstPaymentDate = new Date(start.getFullYear(), start.getMonth() + 1, 1);
     
     for (let i = 0; i < count; i++) {
       const date = new Date(firstPaymentDate);
@@ -183,7 +176,7 @@ export default function Home() {
     setIsEditingPaymentPlan(true);
   };
 
-  const handlePaymentChange = (id: number, field: string, value: any) => {
+  const handlePaymentChange = (id: number, field: string, value: string | number | boolean) => {
     setPaymentPlan(prev => ({
       ...prev,
       payments: prev.payments.map(payment => {
@@ -249,7 +242,7 @@ export default function Home() {
     const savedPlan = savedPlans[planType];
     if (!savedPlan) return null;
 
-    return savedPlan.payments.map((payment, index) => (
+    return savedPlan.payments.map((payment) => (
       <div key={payment.id} className="flex items-center justify-between text-sm">
         <span className="text-gray-600">
           {payment.title} due {payment.dueDate}
@@ -389,7 +382,7 @@ export default function Home() {
                         </div>
                         
                         <p className="text-sm text-gray-600 pt-1 pb-4">
-                          Set this registration's start and end dates. These are the dates registrants will attend your program.
+                          Set this registration&apos;s start and end dates. These are the dates registrants will attend your program.
                         </p>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -508,7 +501,7 @@ export default function Home() {
                                 )}
                                 <div className="flex items-center justify-between">
                                   <p className="text-xs text-gray-500">
-                                    {savedPlans.fourInstallments ? 'Custom payment plan' : 'Payment dates auto-generate monthly based on your registration\'s start date.'}
+                                    {savedPlans.fourInstallments ? 'Custom payment plan' : 'Payment dates auto-generate monthly based on your registration&apos;s start date.'}
                                   </p>
                                   <Button 
                                     variant="outline" 
@@ -564,7 +557,7 @@ export default function Home() {
                                 )}
                                 <div className="flex items-center justify-between">
                                   <p className="text-xs text-gray-500">
-                                    {savedPlans.depositInstallments ? 'Custom payment plan' : 'Payment dates auto-generate monthly based on your registration\'s start date.'}
+                                    {savedPlans.depositInstallments ? 'Custom payment plan' : 'Payment dates auto-generate monthly based on your registration&apos;s start date.'}
                                   </p>
                                   <Button 
                                     variant="outline" 
